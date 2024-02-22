@@ -3,7 +3,8 @@ import logging
 import pathlib
 import json
 import hashlib
-from fastapi import FastAPI, Form, HTTPException, File, UploadFile
+import sqlite3
+from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -30,6 +31,16 @@ app.add_middleware(
 
 # JSONファイルのパスを指定
 json_file_path = pathlib.Path(__file__).parent.resolve() / "items.json"
+
+
+DATABASE_URL = "db/new_mercari.sqlite3"
+
+# データベース接続関数の作成
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE_URL)
+    conn.row_factory = sqlite3.Row  # 辞書形式で結果を取得できるようにする
+    return conn
+
 
 @app.get("/")
 def root():
@@ -72,20 +83,47 @@ async def add_item(name: str = Form(...), category: str = Form(None), image: Upl
         with open(json_file_path, "w", encoding="utf-8") as file:
             json.dump({"items": [new_item]}, file, indent=4)
     
+    # データベース接続
+    conn = get_db_connection()
+    # cursor = conn.cursor()
+
+    # 商品情報をデータベースに保存
+    conn.execute("INSERT INTO items (name, category, image_name) VALUES (?, ?, ?)",
+                 (name, category, image_filename))
+    
+    conn.commit()
+
+    # データベース接続を閉じる
+    conn.close()
+
     # アイテムが正常に追加されたことをクライアントに通知
-    return {"message": f"Item '{name}' with image '{image_filename}' received and saved."}
+    return {"id": conn.lastrowid, "name": name, "category": category, "image_name": image_filename}
 
 @app.get("/items")
 def get_items():
+    conn = get_db_connection()
+    items = conn.execute("""
+        SELECT items.id, items.name, categories.name AS category, items.image_name
+        FROM items
+        JOIN categories ON items.category_id = categories.id
+    """).fetchall()
+    conn.close()
+
+    # 結果をリストに変換
+    items_list = [{"id": item["id"], "name": item["name"], "category": item["category"], "image_name": item["image_name"]} for item in items]
+
+    return {"items": items_list}
+
     # JSONファイルが存在しない場合は空のリストを返す
-    if not json_file_path.exists():
-        return {"items": []}
+    #if not json_file_path.exists():
+        #return {"items": []}
     
     # JSONファイルからアイテムのリストを読み込む
-    with open(json_file_path, "r", encoding="utf-8") as file:
-        data = json.load(file)
-        return data
-    
+    #with open(json_file_path, "r", encoding="utf-8") as file:
+        #data = json.load(file)
+        #return data
+
+
 @app.get("/image/{image_name}")
 async def get_image(image_name):
     # image pathの作成
@@ -117,3 +155,14 @@ def get_item(item_id: int):
 
     # 指定された item_id のアイテムを返す（リストは 0 から始まるので、item_id から 1 を引く）
     return items[item_id - 1]
+
+@app.get("/search")
+def search_items(keyword: str = Query(None, min_length=1)):
+    conn = get_db_connection()
+    # LIKE句を使用して、キーワードを含む商品名を持つレコードを検索
+    items = conn.execute("SELECT * FROM items WHERE name LIKE ?", (f"%{keyword}%",)).fetchall()
+    conn.close()
+
+    items_list = [{"id": item["id"], "name": item["name"], "category": item["category"], "image_name": item["image_name"]} for item in items]
+
+    return {"items": items_list}
