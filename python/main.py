@@ -124,26 +124,29 @@ def get_items():
     cursor = conn.cursor()
 
     # DBのクエリを実行
-    cursor.execute('SELECT * FROM items')   
-    # 実行したクエリの中身を全て取得
-    items = cursor.fetchall()
+    # cursor.execute('SELECT * FROM items')   
+    # # 実行したクエリの中身を全て取得
+    # items = cursor.fetchall()
 
     # itemsテーブルとcategoriesテーブルを結合してデータを取得
-    # items = conn.execute("""
-    #     SELECT items.id, items.name, categories.name AS category_name, items.image_name
-    #     FROM items
-    #     JOIN categories ON items.category_id = categories.id
-    # """).fetchall()
+    items = conn.execute("""
+        SELECT items.id, items.name, categories.name AS category_name, items.image_name
+        FROM items
+        JOIN categories ON items.category_id = categories.id
+    """).fetchall()
     
     # データベース接続を閉じる
-    cursor.close()
+    # cursor.close()
     # データベース接続を閉じる
-    # conn.close()
+    conn.close()
 
     # 結果をリストに変換して返す
     items_list = [
-        {"id": item["id"], "name": item["name"], "category": item["category_name"], "image_name": item["image_name"]}
-        for item in items
+        {"id": item["id"], 
+         "name": item["name"], 
+         "category": item["category_name"], 
+         "image_name": item["image_name"]
+        } for item in items
     ]
 
     return {"items": items_list}
