@@ -172,6 +172,7 @@ async def get_image(image_name):
 
     return FileResponse(image)
 
+
 @app.get("/items/{item_id}")
 def get_item(item_id: int):
     # JSONファイルが存在しない場合はエラーを返す
@@ -197,6 +198,7 @@ def get_item(item_id: int):
 
     # 指定された item_id のアイテムを返す（リストは 0 から始まるので、item_id から 1 を引く）
     return items[item_id - 1]
+
 
 @app.get("/search")
 def search_items(keyword: str = Query(None, min_length=1)):
