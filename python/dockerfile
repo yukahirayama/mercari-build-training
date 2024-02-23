@@ -1,12 +1,10 @@
-FROM alpine
+FROM python:3.8-slim-buster
 
-# Python3 とそのシンボリックリンクをインストール
-RUN apk add --update python3 py3-pip \
-    && ln -sf python3 /usr/bin/python
+WORKDIR /app
 
-RUN addgroup -S mercari && adduser -S trainee -G mercari
-# RUN chown -R trainee:mercari /path/to/db
+COPY requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
 
-USER trainee
+COPY . .
 
-CMD ["python", "-V"]
+CMD [ "python3", "-m" , "flask", "run", "--host=0.0.0.0"]
