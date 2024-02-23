@@ -4,6 +4,7 @@ import pathlib
 import json
 import hashlib
 import sqlite3
+from typing import List
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,15 +33,30 @@ app.add_middleware(
 # JSONファイルのパスを指定
 json_file_path = pathlib.Path(__file__).parent.resolve() / "items.json"
 
-
-DATABASE_URL = "db/new_mercari.sqlite3"
-
-# データベース接続関数の作成
+#データベース接続関数の作成
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE_URL)
+    # mercari.sqlite3 のパス
+    database_path = pathlib.Path(__file__).parent.resolve() / "db" / "mercari.sqlite3"
+    conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row  # 辞書形式で結果を取得できるようにする
     return conn
 
+# items.json ファイルに保存
+def save_items_to_json(items):
+    with open(json_file_path, "w") as f:
+        json.dump(items, f, indent=4)
+def load_items_from_json():
+    if json_file_path.exists():
+        with open(json_file_path, "r") as f:
+            return json.load(f)
+    return {"items": []}
+def save_image(file, filename):
+    with open(images / filename, "wb") as image:
+        image.write(file)
+# dbに保存
+def save_items_to_db(items):
+    with open(json_file_path, "w") as f:
+        json.dump(items, f, indent=4)
 
 @app.get("/")
 def root():
@@ -85,32 +101,50 @@ async def add_item(name: str = Form(...), category: str = Form(None), image: Upl
     
     # データベース接続
     conn = get_db_connection()
-    # cursor = conn.cursor()
-
+    cursor = conn.cursor()
+    
     # 商品情報をデータベースに保存
     conn.execute("INSERT INTO items (name, category, image_name) VALUES (?, ?, ?)",
-                 (name, category, image_filename))
+                (name, category, image_filename))
     
     conn.commit()
 
     # データベース接続を閉じる
+    item_id = cursor.lastrowid
     conn.close()
 
     # アイテムが正常に追加されたことをクライアントに通知
-    return {"id": conn.lastrowid, "name": name, "category": category, "image_name": image_filename}
+    return {"id": item_id, "name": name, "category": category, "image_name": image_filename}
 
 @app.get("/items")
 def get_items():
+    # データベース接続を取得
     conn = get_db_connection()
-    items = conn.execute("""
-        SELECT items.id, items.name, categories.name AS category, items.image_name
-        FROM items
-        JOIN categories ON items.category_id = categories.id
-    """).fetchall()
-    conn.close()
+    
+    cursor = conn.cursor()
 
-    # 結果をリストに変換
-    items_list = [{"id": item["id"], "name": item["name"], "category": item["category"], "image_name": item["image_name"]} for item in items]
+    # DBのクエリを実行
+    cursor.execute('SELECT * FROM items')   
+    # 実行したクエリの中身を全て取得
+    items = cursor.fetchall()
+
+    # itemsテーブルとcategoriesテーブルを結合してデータを取得
+    # items = conn.execute("""
+    #     SELECT items.id, items.name, categories.name AS category_name, items.image_name
+    #     FROM items
+    #     JOIN categories ON items.category_id = categories.id
+    # """).fetchall()
+    
+    # データベース接続を閉じる
+    cursor.close()
+    # データベース接続を閉じる
+    # conn.close()
+
+    # 結果をリストに変換して返す
+    items_list = [
+        {"id": item["id"], "name": item["name"], "category": item["category_name"], "image_name": item["image_name"]}
+        for item in items
+    ]
 
     return {"items": items_list}
 
@@ -149,6 +183,14 @@ def get_item(item_id: int):
         data = json.load(file)
         items = data.get("items", [])
 
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    items = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
     # item_id がリストの範囲外の場合はエラーを返す
     if item_id < 1 or item_id > len(items):
         raise HTTPException(status_code=404, detail="Item not found")
@@ -158,11 +200,22 @@ def get_item(item_id: int):
 
 @app.get("/search")
 def search_items(keyword: str = Query(None, min_length=1)):
+    # データベース接続を取得
     conn = get_db_connection()
+
     # LIKE句を使用して、キーワードを含む商品名を持つレコードを検索
     items = conn.execute("SELECT * FROM items WHERE name LIKE ?", (f"%{keyword}%",)).fetchall()
+   
+    # データベース接続を閉じる
     conn.close()
 
-    items_list = [{"id": item["id"], "name": item["name"], "category": item["category"], "image_name": item["image_name"]} for item in items]
+    # 検索結果をリスト形式でクライアントに返す
+    items_list = [
+        {
+            "id": item["id"], 
+            "name": item["name"], 
+            "category": item["category"], 
+            "image_name": item["image_name"]
+        } for item in items]
 
     return {"items": items_list}
