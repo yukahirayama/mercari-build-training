@@ -64,7 +64,7 @@ def root():
 
 
 @app.post("/items")
-async def add_item(name: str = Form(...), category: str = Form(None), image: UploadFile = File(...)):
+async def add_item(name: str = Form(...), category_id: str = Form(None), image: UploadFile = File(...)):
     # 受け取ったアイテムの情報をログに記録
     # logger.info(f"Receive item: {name}, Category: {category}")
 
@@ -78,11 +78,11 @@ async def add_item(name: str = Form(...), category: str = Form(None), image: Upl
         image_file.write(image_data)
 
     # 新しいアイテムを辞書形式で作成
-    new_item = {"name": name, "category": category, "image": image_filename}
+    new_item = {"name": name, "category": category_id, "image": image_filename}
 
     item_message = f"Item received: {name} "
-    if category:
-        item_message += f" Category: '{category}'."
+    if category_id:
+        item_message += f" Category: '{category_id}'."
 
     # JSONファイルを読み込み、アイテムを追加
     if json_file_path.exists():
@@ -104,8 +104,8 @@ async def add_item(name: str = Form(...), category: str = Form(None), image: Upl
     cursor = conn.cursor()
     
     # 商品情報をデータベースに保存
-    conn.execute("INSERT INTO items (name, category, image_name) VALUES (?, ?, ?)",
-                (name, category, image_filename))
+    conn.execute("INSERT INTO items (name, category_id, image_name) VALUES (?, ?, ?)",
+                (name, category_id, image_filename))
     
     conn.commit()
 
@@ -114,7 +114,7 @@ async def add_item(name: str = Form(...), category: str = Form(None), image: Upl
     conn.close()
 
     # アイテムが正常に追加されたことをクライアントに通知
-    return {"id": item_id, "name": name, "category": category, "image_name": image_filename}
+    return {"id": item_id, "name": name, "category": category_id, "image_name": image_filename}
 
 @app.get("/items")
 def get_items():
